@@ -341,7 +341,7 @@ sub execute {
     );
 
     if (defined $err) {
-        return $sth->set_err($DBI::stderr, $err);
+        return $sth->set_err(1, $err);
     }
 
     # D1 REST returns an array of result objects (one per statement).
