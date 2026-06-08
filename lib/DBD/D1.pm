@@ -76,6 +76,12 @@ sub query {
 
     my $res = $http->post($url, { content => $body });
 
+    # Try to parse JSON response to get detailed error info
+    my $data;
+    if ($res->{content}) {
+        $data = eval { $json->decode($res->{content}) };
+    }
+
     unless ($res->{success}) {
         my $detail = $res->{content} // '';
         if ($res->{status} == 599 && $detail =~ /ssl|IO::Socket/i) {
@@ -84,11 +90,25 @@ sub query {
               . 'Install IO::Socket::SSL and Net::SSLeay: '
               . 'cpanm IO::Socket::SSL Net::SSLeay');
         }
+        
+        # If we have JSON error details, use those
+        if ($data && ref $data eq 'HASH') {
+            if (!$data->{success}) {
+                my $errs = $data->{errors} // [];
+                if (@$errs) {
+                    my $msg = $errs->[0]{message} // 'Unknown D1 API error';
+                    return (undef, $msg);
+                }
+            }
+        }
+        
         return (undef, sprintf('HTTP %s: %s', $res->{status}, $res->{reason} // 'Unknown'));
     }
 
-    my $data = eval { $json->decode($res->{content}) };
-    if ($@) { return (undef, "JSON decode error: $@") }
+    if (!$data) {
+        $data = eval { $json->decode($res->{content}) };
+        if ($@) { return (undef, "JSON decode error: $@") }
+    }
 
     unless ($data->{success}) {
         my $errs = $data->{errors} // [];
