@@ -4,7 +4,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile(
     NAME             => 'DBD::D1',
-    AUTHOR           => 'Your Name <you@example.com>',
+    AUTHOR           => 'Aldo Montes Zapata <amontes@cpan.org>',
     VERSION_FROM     => 'lib/DBD/D1.pm',
     ABSTRACT_FROM    => 'lib/DBD/D1.pm',
     LICENSE          => 'perl_5',
@@ -19,4 +19,17 @@ WriteMakefile(
     BUILD_REQUIRES => { 'Test::More' => '0.98' },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },
     clean => { FILES    => 'DBD-D1-*' },
+    META_MERGE => {
+        'meta-spec' => { version => 2 },
+        resources => {
+            repository => {
+                type => 'git',
+                url  => 'https://github.com/amzt/DBD-D1.git',
+                web  => 'https://github.com/amzt/DBD-D1',
+            },
+            bugtracker => {
+                web => 'https://github.com/amzt/DBD-D1/issues',
+            },
+        },
+    },
 );

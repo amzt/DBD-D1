@@ -505,6 +505,14 @@ C<sort> on key names. Use C<fetchrow_hashref> for reliable named access.
 
 L<DBI>, L<HTTP::Tiny>, L<JSON::PP>, L<IO::Socket::SSL>, L<Net::SSLeay>
 
+=head1 AUTHOR
+
+Aldo Montes Zapata, C<< <amontes@cpan.org> >>
+
+=head1 COPYRIGHT (c)
+
+Copyright 2026 by Aldo Montes Zapata C<< <amontes@cpan.org> >>.
+
 =head1 LICENSE
 
 Same terms as Perl itself.
