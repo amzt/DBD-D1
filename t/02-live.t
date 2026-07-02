@@ -20,7 +20,7 @@ unless (HTTP::Tiny->can_ssl) {
     plan skip_all => 'Live tests skipped: HTTP::Tiny reports SSL unavailable';
 }
 
-plan tests => 10;
+plan tests => 13;
 
 my $dbh = DBI->connect(
     "dbi:D1:account_id=$ENV{CF_ACCOUNT_ID};database_id=$ENV{CF_D1_DATABASE_ID}",
@@ -60,6 +60,20 @@ $sel->execute;
 my $row = $sel->fetchrow_hashref;
 ok(defined $row->{label}, 'fetchrow_hashref has label key');
 ok(defined $row->{value}, 'fetchrow_hashref has value key');
+
+# /raw preserves SELECT column order (would be alphabetical under /query).
+my $ord = $dbh->prepare('SELECT value, label FROM dbd_d1_test ORDER BY id LIMIT 1');
+$ord->execute;
+is_deeply($ord->{NAME}, [qw(value label)],
+    'column order matches SELECT list, not alphabetical');
+
+# /raw preserves duplicate column names that would collide in a hashref.
+my $dup = $dbh->prepare('SELECT id, id FROM dbd_d1_test ORDER BY id LIMIT 1');
+$dup->execute;
+is($dup->{NUM_OF_FIELDS}, 2, 'duplicate columns both reported (NUM_OF_FIELDS == 2)');
+my $dup_row = $dup->fetchrow_arrayref;
+ok($dup_row && @$dup_row == 2 && $dup_row->[0] == $dup_row->[1],
+    'both duplicate id columns returned, values equal');
 
 my $upd = $dbh->do(
     'UPDATE dbd_d1_test SET value = ? WHERE label = ?',

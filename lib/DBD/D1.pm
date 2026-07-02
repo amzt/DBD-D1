@@ -6,7 +6,7 @@ package DBD::D1;
 use strict;
 use warnings;
 
-our $VERSION  = '0.02';
+our $VERSION  = '0.03';
 our $err      = 0;
 our $errstr   = '';
 our $sqlstate = '';
@@ -56,8 +56,13 @@ sub query {
           . 'cpanm IO::Socket::SSL Net::SSLeay');
     }
 
+    # Use the /raw endpoint: it returns results in a columnar/positional form
+    # ({ columns => [...], rows => [[...], ...] }) rather than an array of
+    # name-keyed row objects. This preserves SELECT column order and, crucially,
+    # duplicate column names from JOINs (e.g. SELECT a.id, b.id) that would
+    # otherwise collide in a hash-keyed representation.
     my $url = sprintf(
-        'https://api.cloudflare.com/client/v4/accounts/%s/d1/database/%s/query',
+        'https://api.cloudflare.com/client/v4/accounts/%s/d1/database/%s/raw',
         $account_id, $database_id,
     );
 
@@ -344,23 +349,34 @@ sub execute {
         return $sth->set_err(1, $err);
     }
 
-    # D1 REST returns an array of result objects (one per statement).
-    my $res  = ref($result) eq 'ARRAY' ? $result->[0] : $result;
-    my $rows = $res->{results} // [];   # array of hashrefs
-    my $meta = $res->{meta}    // {};
+    # D1 REST returns an array of result objects (one per statement). With the
+    # /raw endpoint each object's {results} is a hashref of the columnar form:
+    #   { columns => [ names... ], rows => [ [ values... ], ... ] }
+    # Rows are already positional arrays, so column order and duplicate column
+    # names are preserved verbatim (no alphabetical sort, no hash collision).
+    my $res     = ref($result) eq 'ARRAY' ? $result->[0] : $result;
+    my $meta    = $res->{meta} // {};
 
-    if (@$rows) {
-        my @col_names = sort keys %{ $rows->[0] };
+    # For SELECTs, {results} is the columnar hashref { columns => [], rows => [] }.
+    # For writes (INSERT/UPDATE/DDL) it may be an empty array, null, or absent;
+    # normalise anything that isn't a hashref to an empty result set.
+    my $results = $res->{results};
+    $results = {} unless ref $results eq 'HASH';
+
+    my $col_names = $results->{columns} // [];
+    my $data_rows = $results->{rows}    // [];
+
+    if (@$col_names) {
+        # Copy so we don't hand DBI a ref into the decoded JSON structure.
+        my @names = @$col_names;
 
         # Must use direct hash assignment – STORE() rejects DBI read-only attrs
-        $sth->{NAME}          = \@col_names;
-        $sth->{NAME_lc}       = [ map { lc $_ } @col_names ];
-        $sth->{NAME_uc}       = [ map { uc $_ } @col_names ];
-        $sth->{NUM_OF_FIELDS} = scalar @col_names;
+        $sth->{NAME}          = \@names;
+        $sth->{NAME_lc}       = [ map { lc $_ } @names ];
+        $sth->{NAME_uc}       = [ map { uc $_ } @names ];
+        $sth->{NUM_OF_FIELDS} = scalar @names;
 
-        $sth->{d1_result_data} = [
-            map { my $r = $_; [ @{$r}{@col_names} ] } @$rows
-        ];
+        $sth->{d1_result_data} = [ map { [ @$_ ] } @$data_rows ];
     } else {
         $sth->{NAME}           = [];
         $sth->{NAME_lc}        = [];
@@ -451,7 +467,7 @@ DBD::D1 - DBI driver for Cloudflare D1 (serverless SQLite)
 
 =head1 VERSION
 
-0.02
+0.03
 
 =head1 SYNOPSIS
 
@@ -490,14 +506,33 @@ It communicates via the D1 REST API using L<HTTP::Tiny> and L<JSON::PP>
 Pass your Cloudflare API token (B<D1 Edit> permission) as the C<$password>
 argument to C<DBI-E<gt>connect()>.
 
+=head1 RESULT FORMAT
+
+DBD::D1 queries the D1 REST C<.../raw> endpoint, which returns results in a
+columnar form (an ordered C<columns> list plus positional C<rows> arrays).
+As a result:
+
+=over 4
+
+=item * B<Column order> matches the C<SELECT> list exactly.
+
+=item * B<Duplicate column names> from joins (e.g. C<SELECT a.id, b.id ...>)
+are preserved, so array-based fetches (C<fetchrow_arrayref>,
+C<fetchrow_array>, C<fetchall_arrayref>) return every column. You do B<not>
+need to alias colliding columns (C<AS a_id>, C<AS b_id>) for these methods.
+
+=back
+
 =head1 LIMITATIONS
 
 =over 4
 
 =item * B<AutoCommit only> – D1 REST has no multi-statement transaction support.
 
-=item * B<Column ordering> – rows arrive as JSON objects; column order follows
-C<sort> on key names. Use C<fetchrow_hashref> for reliable named access.
+=item * B<fetchrow_hashref and duplicate columns> – as with any DBI driver,
+a hashref fetch is keyed by column name, so duplicate names from a join
+collapse to a single key (last value wins). Alias colliding columns when you
+need named access to all of them; array-based fetches are unaffected.
 
 =back
 

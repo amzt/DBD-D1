@@ -1,2 +1,11 @@
+0.03  2026-07-01
+  - Query the D1 REST .../raw endpoint instead of .../query. Results now use
+    D1's columnar form (ordered columns + positional rows).
+  - Preserve SELECT column order exactly (previously alphabetised).
+  - Preserve duplicate column names from joins for array-based fetches
+    (fetchrow_arrayref/fetchrow_array/fetchall_arrayref); colliding columns no
+    longer need aliasing. Note: fetchrow_hashref still collapses duplicates by
+    name, as with any DBI driver.
+
 0.02  2026-06-10
   - Initial CPAN release
